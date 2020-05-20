@@ -399,7 +399,7 @@ esac
 HAD_WPA_SUP_FILE=1
 if [[ ! -f "$WPA_SUP_FILE" ]]; then
     HAD_WPA_SUP_FILE=0
-    wget -q -O "$WPA_SUP_FILE" "https://raw.githubusercontent.com/maxweisspoker/singleboard-setup-scripts/master/install_archlinuxarm/${WPA_SUP_FILE}" 2>&1 >/dev/null
+    wget -q -O "$WPA_SUP_FILE" "https://raw.githubusercontent.com/maxweisspoker/singleboard-setup-scripts/ac693cf8f3ff41a35348d5bf30a20c568be1fb67/install_archlinuxarm/${WPA_SUP_FILE}" 2>&1 >/dev/null
     if [ $? -ne 0 ]; then
         rm -f "$WPA_SUP_FILE"
         echo "ERROR: Could not download wpa_supplicant b64 text file. Aborting..." 1>&2
