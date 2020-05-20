@@ -1,0 +1,44 @@
+Host archvagrant1
+  HostName 127.0.0.1
+  User vagrant
+  Port 2222
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile ./.vagrant/machines/archvagrant1/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+
+Host archvagrant2
+  HostName 127.0.0.1
+  User vagrant
+  Port 2200
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile ./.vagrant/machines/archvagrant2/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+
+Host archvagrant3
+  HostName 127.0.0.1
+  User vagrant
+  Port 2201
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile ./.vagrant/machines/archvagrant3/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+
+Host archvagrant4
+  HostName 127.0.0.1
+  User vagrant
+  Port 2202
+  UserKnownHostsFile /dev/null
+  StrictHostKeyChecking no
+  PasswordAuthentication no
+  IdentityFile ./.vagrant/machines/archvagrant4/virtualbox/private_key
+  IdentitiesOnly yes
+  LogLevel FATAL
+

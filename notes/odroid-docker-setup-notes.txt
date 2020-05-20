@@ -1,0 +1,61 @@
+
+
+
+
+order of operations for odroid alarm:
+
+packages removed:  linux-odroid-c2  uboot-odroid-c2
+
+then present:  linux-aarch64 uboot-odroid-c2-mainline uboot-tools
+but use shell and run --needed and with yes
+
+also ignore errors because mkinitcpio hook may bork but still be successful
+specifically this line:
+    cp: cannot stat '(builtin)': No such file or directory
+can safely be ignored. If that's the only failed, the build succeeded.
+Arch Linux upstream is aware of the issue causing that, and it will be fixed in the future.
+
+
+then (taken from arch uboot install script)
+
+  if mountpoint -d /boot > /dev/null 2>&1; then
+    base=/boot
+  else
+    base=/
+  fi
+  major=$(mountpoint -d $base | cut -f 1 -d ':')
+  minor=$(expr $(mountpoint -d $base | cut -f 2 -d ':') - 1)
+  device=$(cat /proc/partitions | awk {'if ($1 == "'${major}'" && $2 == "'${minor}'") print $4 '})
+  cd /boot; ./sd_fusing.sh /dev/${device}
+
+then mkinitcpio -p linux-aarch64   just for fun, ignore error
+
+then reboot
+
+then change boot.txt (and fail loudly if boot.txt doesn't exist) line
+
+then run mkscr
+
+then reboot
+
+then install docker
+
+
+
+
+
+
+odroid-c2:  pacman -S linux-aarch64 (force, includes other package removal; will encouter mkinitcpio warning that produces non-zero exit which is safe to ignore); pacman -R uboot-odroid-c2; pacman -S uboot-odroid-c2-mainline (will ask if you want to run uboot regeneration, you selected yes, but find out how to autoselect no and do it manually for ansible)
+
+also install "uboot-tools" package
+
+then reboot. you should be running newest linux kernel now
+
+next you modify the newly created /boot/boot.txt file, and there should be a line:
+
+setenv bootargs "console=ttyAML0,115200n8 root=PARTUUID=${uuid} rw rootwait earlycon"
+
+and the quotes is where the kernel parameters go. so modify that line, inside the quotes, to add any parameters you want.
+
+when finished, while in the dir /boot/, run the program /boot/mkscr (with sudo and no arguments). that will make a boot.scr binary file, which will include your boot.txt args, and will be loaded automagically on reboot.
+

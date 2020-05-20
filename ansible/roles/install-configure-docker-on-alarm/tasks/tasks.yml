@@ -1,0 +1,257 @@
+---
+
+# First we register if we're on the odroid-c2 or not, since it requires a ton of extra setup.
+# There's a package installed by alarm by default which includes specific settings for the odroid,
+#   and it has "odroid-c2" in the package name.
+# So it's an easy hack for determining if we're on the odroid.
+# On odroid-c2:  is_this_odroidc2.rc == 0
+# Not on odroid-c2: is_this_odroidc2.rc != 0
+- name: determine if using odroid-c2
+  shell: |
+    pacman -Sl | grep installed | grep odroid-c2 2>&1 >/dev/null
+  register: is_this_odroidc2
+  failed_when: "is_this_odroidc2.rc != 0 and is_this_odroidc2.rc != 1"
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+
+# First things first, update all packages, so we're not on a inconsistent system for the docker install
+- name: update pacman cache
+  pacman:
+    update_cache: yes
+    force: yes
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: update all system packages
+  pacman:
+    upgrade: yes
+    update_cache: no
+  notify: reboot
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+
+# Now on odroid-specifically, we need to install a different kernel package
+- name: remove old odroid-c2 kernel
+  pacman:
+    name: linux-odroid-c2
+    state: absent
+    force: yes
+  when: is_this_odroidc2.rc == 0
+  notify: reboot
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+#- name: install new odroid-c2 kernel
+#  pacman:
+#    name: linux-aarch64
+#    state: present
+#    force: yes
+#  when: is_this_odroidc2.rc == 0
+#  notify: reboot
+#  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# When installing the new kernel, the mkinitcpio hook sometimes incorrectly reports a failure,
+# so we use this custom script to allow us to modify how we install and verify it
+- name: install new odroid-c2 kernel with shell command
+  when: is_this_odroidc2.rc == 0
+  notify: reboot
+  ignore_errors: yes
+  shell: |
+    yes y | pacman -S --needed linux-aarch64
+    exit 0
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# Now we remove the old uboot tools
+- name: remove old uboot tools from odroid-c2
+  pacman:
+    name: uboot-odroid-c2
+    state: absent
+    force: yes
+  when: is_this_odroidc2.rc == 0
+  notify: reboot
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# And once again, install new version with a custom shell hack,
+# Although this time, we can report on errors
+- name: install new odroid-c2 uboot tools with shell command
+  when: is_this_odroidc2.rc == 0
+  notify: reboot
+  shell: |
+    yes y | pacman -S --needed uboot-odroid-c2-mainline uboot-tools
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# Now with the new uboot installed, we run its reinstallation script
+# The last action is running sd_fusing.sh, so the rc will tell us if that fails
+- name: install new uboot bootloader on odroid-c2
+  when: is_this_odroidc2.rc == 0
+  notify: reboot
+  shell: |
+    if mountpoint -d /boot > /dev/null 2>&1; then
+      base=/boot
+    else
+      base=/
+    fi
+    major=$(mountpoint -d $base | cut -f 1 -d ':')
+    minor=$(expr $(mountpoint -d $base | cut -f 2 -d ':') - 1)
+    device=$(cat /proc/partitions | awk {'if ($1 == "'${major}'" && $2 == "'${minor}'") print $4 '})
+    cd /boot; ./sd_fusing.sh /dev/${device}
+  args:
+    executable: /bin/bash
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# Now with the new uboot installed, we reload systemctl daemon and run mkinitcpio again, then reboot
+
+- name: systemctl-daemon-reload
+  systemd:
+    daemon_reload: yes
+  when: is_this_odroidc2.rc == 0
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+- name: re-run mkinitcpio after uboot install
+  when: is_this_odroidc2.rc == 0
+  ignore_errors: yes
+  shell: |
+    mkinitcpio -p linux-aarch64
+    exit 0
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# Reboot all nodes by flushing handlers since they may have updated system files
+
+- name: potential reboot (flushing handlers)
+  meta: flush_handlers
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+# Now we edit all node's cmdline files to include the necessary kernel options for docker to work correctly
+
+- name: modify pi /boot/cmdline.txt files to include kernel docker options
+  when: is_this_odroidc2.rc != 0
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: '^root=/dev/mmcblk0p2'
+    line: 'root=/dev/mmcblk0p2 rw rootwait console=ttyAMA0,115200 console=tty1 selinux=0 plymouth.enable=0 smsc95xx.turbo_mode=N dwc_otg.lpm_enable=0 kgdboc=ttyAMA0,115200 elevator=noop cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory'
+  ignore_errors: "{{ ansible_check_mode }}"
+  notify: reboot
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: modify odroid /boot/boot.txt files to include kernel docker options
+  when: is_this_odroidc2.rc == 0
+  lineinfile:
+    path: /boot/boot.txt
+    regexp: '^setenv bootargs'
+    line: setenv bootargs "console=ttyAML0,115200n8 root=PARTUUID=${uuid} rw rootwait earlycon cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory"
+  ignore_errors: "{{ ansible_check_mode }}"
+  notify: reboot
+  register: odroidc2_bootargs
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+# Regenerate odroid-c2 uboot binary with new args if boot.txt was changed
+- name: regenerate odroid-c2 uboot binary
+  when: is_this_odroidc2.rc == 0 and odroidc2_bootargs.changed
+  notify: reboot
+  shell: |
+    cd /boot
+    ./mkscr
+  tags: [ 'alarm', 'archlinux', 'docker', 'odroid-c2' ]
+
+
+# If necessary, reboot all nodes again by flushing handlers, so they load the new kernel params
+
+- name: potential reboot (flushing handlers) (2)
+  meta: flush_handlers
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+
+################################################################################################
+# Now all nodes have the proper kernel parameters loaded and we can install and configure docker
+################################################################################################
+
+
+- name: install docker
+  pacman:
+    name: docker
+    state: present
+    update_cache: yes
+  notify: reboot
+  register: install_docker
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: install python-docker
+  pacman:
+    name: python-docker
+    state: present
+    update_cache: yes
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: verify docker group is present
+  group:
+    name: "{{ default_docker_group }}"
+    state: present
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: remove docker user if it exists
+  user:
+    name: "{{ default_docker_user }}"
+    state: absent
+    remove: yes
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: add default user to docker group
+  user:
+    name: "{{ default_alarm_username }}"
+    groups:
+      - "{{ default_docker_group }}"
+    append: yes
+    state: present
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+# Reload config before enabling docker service
+
+- name: systemctl-daemon-reload (2)
+  systemd:
+    daemon_reload: yes
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+# Enable serivce but don't start if it's just installed, since it won't work until after reboot
+- name: enable docker service
+  when: install_docker.changed
+  service:
+    name:    docker
+    enabled: yes
+    state:   stopped
+  notify: reboot
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: enable docker service (2)
+  when: not install_docker.changed
+  service:
+    name:    docker
+    enabled: yes
+    state:   started
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+# Reboot if necessary to start docker
+
+- name: potential reboot (flushing handlers) (3)
+  meta: flush_handlers
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+# Login default user to Docker Hub and private repos
+
+- name: log into docker hub
+  become: yes
+  become_user: "{{ default_alarm_username }}"
+  docker_login:
+    username: "{{ my_dockerhub_username }}"
+    password: "{{ my_dockerhub_password }}"
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+# Registry should be https by default, so no need to include https://
+- name: log into private docker repo
+  become: yes
+  become_user: "{{ default_alarm_username }}"
+  docker_login:
+    registry: "{{ my_private_docker_repo_url }}"
+    username: "{{ my_private_docker_repo_login_username }}"
+    password: "{{ my_private_docker_repo_login_password }}"
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+

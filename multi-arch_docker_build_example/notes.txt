@@ -1,0 +1,31 @@
+To build, you need the "buildx" plugin, and a ton of QEMU-related software. You happened to already have it all mostly installed, but you should be able to google for it and get it working eventually on other computers as well.
+
+You need to place the docker-buildx binary in the following place:
+~/.docker/cli-plugins/docker-buildx
+(where the last part is the binary itself)
+You tried putting it in a global etc directory but that didn't work. Whatever, your home dir works fine.
+
+Also, importantly, buildx has no way to tell the containers it users what user namespace to use, which means you need to disable the userns-remap in the docker config file, and restart the docker daemon, so containers by default run in the host namespace. (Then turn back on userns-remap when finished.)
+
+While in the host namespace, you may also need to run after every boot, I'm not sure:
+docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+That docker run, being priviledged, may or may not do something to your system to allow buildx to work. I don't know. I used it and buildx worked, so I'm just going to keep doing it, even if it may not be necessary. Somehow it's configuring your system to associate specific qemu binaries to handle running non-default architectures, which docker can take advantage of to run (and thus build in) binaries for other architectures.
+
+Then there's something about making a buildx context/namespace, I don't know. I just made a random one and will use it for everything. I see no reason to need a different context for different builds. They all have independent docker build contexts, so it doesn't hurt/contaminate anything or have any security issues.
+
+To build a multi-arch image, while still running the host-namespace docker, run:
+docker buildx build -t repo/image:latest --platform=linux/arm64,linux/amd64,linux/arm/v7,linux/arm/v6 . --push --no-cache
+
+You can see where you specify the platform and where you specify the repo/image name. It borks if you try to run it without pushing, so have a repo ready to receive a push. That can be just a local repo, which you then pull from and re-tag, so you don't have to host an external repo or anything.
+
+Also, importantly, docker works on armv6 architectures, but it pulls the wrong v7 architecture. There's no way to fix this until they fix it (which they haven't in over 3 years so far...), so you have to either make a seprate image that only has the one armv6 platform, so that's the only available thing to pull, or you have to specify the image pull at the sha256 hash for the v6 version. Both options suck, but until docker fixes it, it's what you have to do. You can locate the hash for a multi-arch image manifest by running:
+docker manifest inspect repo/image
+or
+docker buildx imagetools inspect repo/image
+
+Your current plan for making v6 and v7 images work correctly is to push the same image for v6 and v7, but the entry point will be a shell script that determines for itself if it's on v6 or v7 and then runs the appropriate binary.
+
+If the manifest command complains about experimental even though that's enabled, you may also have to put the json line to enable it inside ~/.docker/config.json in addition to /etc/docker/daemon.json.  Then restart the docker daemon service.  That's stupid, and it's another fun docker quirk.
+
+

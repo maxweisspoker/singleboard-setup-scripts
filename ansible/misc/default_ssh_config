@@ -1,0 +1,23 @@
+Host *
+  User ansible
+  SendEnv LANG LC_*
+  UserKnownHostsFile /dev/null
+  HashKnownHosts yes
+  StrictHostKeyChecking no
+  IdentitiesOnly yes
+  PasswordAuthentication no
+  PubkeyAuthentication yes
+  IdentityFile ~/.ssh/privkeys/id_rsa
+  TCPKeepAlive yes
+  ForwardX11 no
+  ForwardX11Trusted no
+  ControlMaster no
+  UseRoaming no
+  ConnectTimeout 90
+  KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+  MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+  Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+  ServerAliveInterval 15
+  GSSAPIAuthentication yes
+  GSSAPIDelegateCredentials no
+

@@ -1,0 +1,6 @@
+---
+# tasks file
+
+- include: tasks.yml
+  become: yes
+

@@ -1,0 +1,14 @@
+order of operations:
+
+figure out how to put kernel command line params in every device
+
+reboot
+
+install docker on every device
+
+configure docker settings and login info for docker hub and your private registry
+
+add default user to docker group so you can use docker yourself
+
+reboot again
+

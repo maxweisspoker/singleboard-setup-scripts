@@ -1,0 +1,9 @@
+---
+# defaults file for bootstrap-alarm
+
+keymap: us
+my_additional_dns_servers: "1.1.1.1 8.8.8.8"
+non_ansible_main_user: '{{ default_alarm_username }}'
+locale_lang: en_US.UTF-8
+locale_language: en_US.UTF-8
+

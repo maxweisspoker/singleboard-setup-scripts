@@ -443,6 +443,11 @@ echo "... Done!"
 
 echo ""
 echo "Step 12: Creating first run boot script to install python for ansible..."
+
+# There's some issues with networkd stopping and/or resolved not working
+# porperly after some time. That's why they're restarted. The ansible
+# script I use later to finish the setup fixes those issues with some
+# tweaks.
 cat << EOF >> "$PWD/root/firstrun.sh"
 #!/bin/bash
 if [ -f "/firstruncomplete.bin" ]; then

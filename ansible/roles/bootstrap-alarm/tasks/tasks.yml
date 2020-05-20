@@ -1,0 +1,451 @@
+---
+
+- name: get ipv4 address in notation for dhcpcd.conf
+  set_fact:
+    myip4addrcidr: "{{ (ansible_default_ipv4.address + '/' + ansible_default_ipv4.netmask) | ipaddr('address/prefix') }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: register firstrun service exists or not
+  stat:
+    path: /usr/lib/systemd/system/firstrun.service
+  register: firstrunexists
+
+- name: disable firstrun service that I created
+  service:
+    name:    firstrun
+    enabled: no
+    state:   stopped
+  ignore_errors: yes
+  when: firstrunexists.stat.exists
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: delete firstrun service files and related files
+  file:
+    path:  "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/firstrun.service
+    - /etc/systemd/system/multi-user.target.wants/firstrun.service
+    - /usr/lib/systemd/system/firstrun.service
+    - /firstrun.sh
+    - /firstruncomplete.bin
+  when: firstrunexists.stat.exists
+  register: firstrundeleted
+  notify: systemctl-daemon-reload
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: reload systemctl daemon immediately after deleting firstrun
+  systemd:
+    daemon_reload: yes
+  when: firstrundeleted.changed
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: ensure locale exists
+  locale_gen:
+    name: "{{ config_system_locale }}"
+    state: present
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'locale-gen' ]
+
+- name: ensure language exists
+  locale_gen:
+    name: "{{ config_system_language }}"
+    state: present
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'locale-gen' ]
+
+- name: get current locale configuration
+  command: localectl status
+  register: locale_status
+  changed_when: false
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'locale-gen' ]
+
+- name: parse LANG from current locale and language configuration
+  set_fact:
+    locale_lang: "{{ locale_status.stdout | regex_search('LANG=([^\n]+)', '\\1') | first }}"
+  when: not ansible_check_mode
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'locale-gen' ]
+
+- name: parse LANGUAGE from current locale and language configuration
+  set_fact:
+    locale_language: "{{ locale_status.stdout | regex_search('LANGUAGE=([^\n]+)', '\\1') | default([locale_lang], true) | first }}"
+  when: not ansible_check_mode
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'locale-gen' ]
+
+- name: set default locale
+  command: localectl set-locale LANG={{ config_system_locale }} LANGUAGE={{ config_system_language }}
+  when: locale_lang != config_system_locale or locale_language != config_system_language
+  notify: reboot
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'locale-gen' ]
+
+- name: set timezone to UTC
+  timezone:
+    name: UTC
+  notify: otot
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: set keymap to default us
+  template: src=vconsole.conf.j2 dest=/etc/vconsole.conf mode=0644
+  notify: reboot
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: set static ip in dhcpcd.conf
+  template: src=dhcpcd.conf.j2 dest=/etc/dhcpcd.conf mode=0644
+  notify: reboot
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: set hostname based on last ip4 octet
+  hostname:
+    name: "pialarm{{ ansible_default_ipv4.address.split('.')[3] }}"
+    use: systemd
+  notify: reboot
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: configure fstrim service for --all instead of --fstab
+  lineinfile:
+    path: /usr/lib/systemd/system/fstrim.service
+    regexp: '^ExecStart='
+    line: 'ExecStart=/usr/bin/fstrim --all --verbose --quiet'
+  notify: [ 'systemctl-daemon-reload', 'reboot' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: set fstrim timer
+  template: src=fstrim.timer.j2 dest=/usr/lib/systemd/system/fstrim.timer mode=0644
+  notify: systemctl-daemon-reload
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: uncomment dnssec in systemd-resolved resolved.conf
+  replace:
+    path: /etc/systemd/resolved.conf
+    regexp: '^#(\s*DNSSEC\s*=)'
+    replace: 'DNSSEC='
+  notify: [ 'systemctl-daemon-reload', 'reboot' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: disable dnssec in systemd-resolved because it is broken
+  lineinfile:
+    path: /etc/systemd/resolved.conf
+    regexp: '^DNSSEC='
+    line: 'DNSSEC=no'
+  notify: [ 'systemctl-daemon-reload', 'reboot' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: uncomment journald storage
+  replace:
+    path: /etc/systemd/journald.conf
+    regexp: '^#(\s*Storage\s*=)'
+    replace: 'Storage='
+  notify: [ 'systemctl-daemon-reload' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: uncomment journald compress
+  replace:
+    path: /etc/systemd/journald.conf
+    regexp: '^#(\s*Compress\s*=)'
+    replace: 'Compress='
+  notify: [ 'systemctl-daemon-reload' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: disable journald by setting storage to none
+  lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: '^Storage='
+    line: 'Storage=none'
+  notify: [ 'systemctl-daemon-reload' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: disable journald compression to improve CPU usage
+  lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: '^Compress='
+    line: 'Compress=no'
+  notify: [ 'systemctl-daemon-reload' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: reboot by flushing handlers
+  meta: flush_handlers
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: give it a sec after reboot
+  pause:
+    seconds: 20
+  when: not ansible_check_mode
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+  # since networking is done by dhcpcd and wpa_supplicant
+- name: disable systemd-networkd
+  service:
+    name:    systemd-networkd
+    enabled: no
+    state:   stopped
+  register: networkdstopped
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+  # Wait 10 seconds and then restart systemd-resolved just for fun
+- name: wait after stopping systemd-networkd
+  pause:
+    seconds: 10
+  when: networkdstopped.changed and not ansible_check_mode
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: restart systemd-resolved
+  service:
+    name:    systemd-resolved
+    state:   restarted
+  when: networkdstopped.changed
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: stop timesyncd since it has issues with k8s
+  service:
+    name:    systemd-timesyncd
+    enabled: no
+    state:   stopped
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: update pacman cache
+  pacman:
+    update_cache: yes
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: install actual wpa_supplicant and overwrite our hacky install
+  pacman:
+    name: wpa_supplicant
+    state: present
+    extra_args: "--overwrite='*'"
+  notify: reboot2
+  register: reboot2handler
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: update all system packages
+  pacman:
+    upgrade: yes
+    update_cache: no
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: install additional packages
+  pacman:
+    name:
+      - ntp
+      - sudo
+      - htop
+      - git
+      - openssh
+      - fakeroot
+    state: present
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: enable ntpd
+  service:
+    name:    ntpd
+    enabled: yes
+    state:   started
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: enable ntpdate
+  service:
+    name:    ntpdate
+    enabled: yes
+    state:   started
+  ignore_errors: yes
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: verify main user group
+  group:
+    name: "{{ default_alarm_username }}"
+    gid: 1000
+    state: present
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: create necessary user groups
+  group:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - wheel
+    - sudo
+    - ansible
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: allow wheel group to have passwordless sudo
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^%wheel'
+    line: '%wheel ALL=(ALL) NOPASSWD: ALL'
+    validate: 'visudo -cf %s'
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: allow sudo group to have sudo with password
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^%sudo'
+    line: '%sudo ALL=(ALL) ALL'
+    validate: 'visudo -cf %s'
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: make sure default user has proper setup
+  user:
+    name: "{{ default_alarm_username }}"
+    uid: 1000
+    expires: -1
+    group: "{{ default_alarm_username }}"
+    groups:
+      - "{{ default_alarm_username }}"
+      - sudo
+    append: yes
+    shell: /bin/bash
+    state: present
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: add ssh key(s) to default user
+  authorized_key:
+    user: "{{ default_alarm_username }}"
+    key: "{{ item }}"
+    state: present
+  loop:
+    - '{{ main_ssh_pubkey }}'
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: create ansible user
+  user:
+    name: ansible
+    expires: -1
+    group: ansible
+    groups:
+      - wheel
+    append: yes
+    shell: /bin/bash
+    state: present
+    create_home: yes
+    password: "{{ ansible_main_default_password }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: add ssh key(s) to ansible user
+  authorized_key:
+    user: ansible
+    key: "{{ item }}"
+    state: present
+  loop:
+    - '{{ main_ssh_pubkey }}'
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: copy over default sshd_config
+  template: src=sshd_default_config.j2 dest=/etc/ssh/sshd_config mode=0644
+  notify: restart-sshd
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: copy over default ssh_config
+  copy: src=files/ssh_default_config dest=/etc/ssh/ssh_config mode=0644
+  notify: restart-sshd
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: register sshd hosts generated by ansible
+  stat:
+    path: /etc/ssh/.ansible_hosts_generated
+  register: ansible_hosts_generated
+
+- name: copy over generated primes
+  copy: content="{{ moduli_safe }}" dest=/etc/ssh/moduli mode=0644
+  notify: restart-sshd
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: run fstrim just for fun
+  command: fstrim -av
+  changed_when: false
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux', 'fstrim' ]
+
+- name: change default user password
+  user:
+    name: "{{ default_alarm_username }}"
+    password: "{{ my_main_default_password }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: configure ntpd to run ntpdate first on every boot
+  lineinfile:
+    path: /usr/lib/systemd/system/ntpd.service
+    regexp: '^After=network'
+    line: 'After=network.target nss-lookup.target ntpdate.service'
+  notify: [ 'systemctl-daemon-reload', 'reboot2' ]
+  register: reboot2handler2
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: delete host keys if they were not generated by this script
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/ssh/ssh_host_dsa_key
+    - /etc/ssh/ssh_host_dsa_key.pub
+    - /etc/ssh/ssh_host_ecdsa_key
+    - /etc/ssh/ssh_host_ecdsa_key.pub
+  when: not ansible_hosts_generated.stat.exists
+  ignore_errors: "{{ ansible_check_mode }}"
+  notify: restart-sshd
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: create sshd host keys if necessary
+  command: ssh-keygen {{ item.parm }} -f {{ item.file }} -N ''
+  with_items:
+    - { parm: "-t ed25519", file: "/etc/ssh/ssh_host_ed25519_key2" }
+    - { parm: "-t rsa -b 4096", file: "/etc/ssh/ssh_host_rsa_key2" }
+  args:
+    creates: /etc/ssh/.ansible_hosts_generated
+  notify: restart-sshd
+  when: not ansible_hosts_generated.stat.exists
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+# sshd borks and quits if you remove host keys it's using between tasks,
+# so we overwrite them with our generated ones in one task
+- name: move ssh host keys to correct location
+  shell: |
+    rm -f /etc/ssh/ssh_host_ed25519_key
+    rm -f /etc/ssh/ssh_host_ed25519_key.pub
+    mv /etc/ssh/ssh_host_ed25519_key2 /etc/ssh/ssh_host_ed25519_key
+    mv /etc/ssh/ssh_host_ed25519_key2.pub /etc/ssh/ssh_host_ed25519_key.pub
+    chown root:root /etc/ssh/ssh_host_ed25519_key
+    chown root:root /etc/ssh/ssh_host_ed25519_key.pub
+    chmod 600 /etc/ssh/ssh_host_ed25519_key
+    chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
+    rm -f /etc/ssh/ssh_host_rsa_key
+    rm -f /etc/ssh/ssh_host_rsa_key.pub; 
+    mv /etc/ssh/ssh_host_rsa_key2 /etc/ssh/ssh_host_rsa_key
+    mv /etc/ssh/ssh_host_rsa_key2.pub /etc/ssh/ssh_host_rsa_key.pub
+    chown root:root /etc/ssh/ssh_host_rsa_key
+    chown root:root /etc/ssh/ssh_host_rsa_key.pub
+    chmod 600 /etc/ssh/ssh_host_rsa_key
+    chmod 644 /etc/ssh/ssh_host_rsa_key.pub
+    touch /etc/ssh/.ansible_hosts_generated
+    chown root:root /etc/ssh/.ansible_hosts_generated
+    chmod 644 /etc/ssh/.ansible_hosts_generated
+    exit 0
+  when: not ansible_hosts_generated.stat.exists
+  warn: false
+  notify: restart-sshd
+  ignore_errors: "{{ ansible_check_mode }}"
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+# Calls reboot2 handler, which runs   $ shutdown -r +1
+- name: flush handlers one last time before root lock
+  meta: flush_handlers
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: lock root
+  user:
+    name: root
+    password: '!'
+    update_password: always
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+## Commented out because reboot2 changed back to immediate reboot rather than 1min delay
+#- name: wait until reboot and fail gracefully
+#  pause:
+#    seconds: 60
+#  ignore_errors: yes
+#  when: reboot2handler.changed or reboot2handler2.changed
+#  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+

@@ -1,0 +1,22 @@
+---
+# handlers file for bootstrap-alarm
+
+- name: restart-sshd
+  service:
+    name: sshd
+    state: restarted
+
+- name: systemctl-daemon-reload
+  systemd:
+    daemon_reload: yes
+
+- name: reboot
+  reboot:
+    reboot_timeout: 400
+
+#- name: reboot2
+#  command: shutdown -r +1
+- name: reboot2
+  reboot:
+    reboot_timeout: 400
+

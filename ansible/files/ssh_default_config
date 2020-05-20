@@ -1,0 +1,26 @@
+Host github.com
+    MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-512
+    KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+
+Host *.github.com
+    MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-512
+    KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+
+Host *
+    IdentitiesOnly no
+    UseRoaming no
+    ConnectTimeout 60
+    KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+    MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+    Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+    ServerAliveInterval 10
+    ControlMaster yes
+    ControlPersist no
+    ControlPath ~/.ssh/socket-%r@%h:%p
+    UserKnownHostsFile /dev/null
+    StrictHostKeyChecking no
+    HashKnownHosts no
+    SendEnv LANG LC_*
+    GSSAPIAuthentication yes
+    GSSAPIDelegateCredentials no
+

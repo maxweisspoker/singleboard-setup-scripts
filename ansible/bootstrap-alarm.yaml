@@ -1,0 +1,130 @@
+---
+
+  # For all Arch Linux ARM hosts
+  - hosts: alarm_hosts
+    ignore_unreachable: no
+    gather_facts: no
+
+    # Try to SSH with alarm and password authentication
+    tasks:
+    - name: check if alarm ssh with password works
+      wait_for_connection:
+        connect_timeout: 20
+        timeout: 30
+      ignore_errors: yes
+      vars:
+        ansible_ssh_user: '{{ default_alarm_username }}'
+        ansible_ssh_pass: '{{ default_alarm_password }}'
+        ansible_ssh_common_args: '-F misc/alarm_prebootstrap_ssh_config'
+      register: can_login_with_alarm_pass
+
+    - name: reset SSH connection in order to try next configuration (1)
+      meta: reset_connection
+
+    # If you can SSH with alarm user and password auth...
+    - when: not can_login_with_alarm_pass.failed
+      # Then see if you can become via su or not
+      name: test if become works with su
+      ping:
+      become: yes
+      become_user: '{{ default_alarm_rootuser }}'
+      become_method: su
+      vars:
+        ansible_ssh_user: '{{ default_alarm_username }}'
+        ansible_ssh_pass: '{{ default_alarm_password }}'
+        ansible_ssh_common_args: '-F misc/alarm_prebootstrap_ssh_config'
+        ansible_become_pass: "{{ default_alarm_rootpass }}"
+      ignore_errors: yes
+      register: can_become_with_alarm_root_su
+
+    - name: reset SSH connection in order to try next configuration (2)
+      meta: reset_connection
+
+    # If you cannot SSH with alarm user and password auth, login with normal method...
+    - when: can_login_with_alarm_pass.failed
+      # and see if you can become via su or not
+      name: test if become works with su (2)
+      ping:
+      become: yes
+      become_user: '{{ default_alarm_rootuser }}'
+      become_method: su
+      vars:
+        ansible_ssh_user: '{{ default_ansible_ssh_user }}'
+        ansible_ssh_common_args: '-F misc/default_ssh_config'
+        ansible_become_pass: "{{ default_alarm_rootpass }}"
+      ignore_errors: yes
+      register: can_become_with_alarm_root_su2
+
+    - name: reset SSH connection in order to execute tasks with correct configuration (3)
+      meta: reset_connection
+
+
+    ##### Now execute tasks with proper SSH login and become_method
+
+
+    # If you can login with alarm user and pass and use su for become, then do so
+  - hosts: alarm_hosts
+    gather_facts: yes
+    ignore_unreachable: yes
+    vars:
+      ansible_ssh_user: '{{ default_alarm_username }}'
+      ansible_ssh_pass: '{{ default_alarm_password }}'
+      ansible_ssh_common_args: '-F misc/alarm_prebootstrap_ssh_config'
+      ansible_become_pass: "{{ default_alarm_rootpass }}"
+    roles:
+      - when: not can_login_with_alarm_pass.failed and not can_become_with_alarm_root_su.failed
+        role: bootstrap-alarm
+        become: yes
+        become_user: '{{ default_alarm_rootuser }}'
+        become_method: su
+ 
+
+
+    # If you can login with user/pass, then do so
+    # And if you can't use su for become, use sudo
+  - hosts: alarm_hosts
+    gather_facts: yes
+    ignore_unreachable: yes
+    vars:
+      ansible_ssh_user: '{{ default_alarm_username }}'
+      ansible_ssh_pass: '{{ default_alarm_password }}'
+      ansible_ssh_common_args: '-F misc/alarm_prebootstrap_ssh_config'
+    roles:
+      - when: not can_login_with_alarm_pass.failed and can_become_with_alarm_root_su.failed
+        role: bootstrap-alarm
+        become: yes
+        become_method: sudo
+
+
+
+    # When you can't login with userpass but you can use su to become, use default SSH login and then su
+  - hosts: alarm_hosts
+    gather_facts: yes
+    ignore_unreachable: yes
+    vars:
+      ansible_ssh_user: '{{ default_ansible_ssh_user }}'
+      ansible_ssh_common_args: '-F misc/default_ssh_config'
+      ansible_become_pass: "{{ default_alarm_rootpass }}"
+    roles:
+      - when: can_login_with_alarm_pass.failed and not can_become_with_alarm_root_su2.failed
+        role: bootstrap-alarm
+        become: yes
+        become_user: '{{ default_alarm_rootuser }}'
+        become_method: su
+
+
+
+    # When you can't user uesrpass nor su, then ssh with defualt and use sudo
+  - hosts: alarm_hosts
+    gather_facts: yes
+    ignore_unreachable: yes
+    vars:
+      ansible_ssh_user: '{{ default_ansible_ssh_user }}'
+      ansible_ssh_common_args: '-F misc/default_ssh_config'
+    roles:
+      - when: can_login_with_alarm_pass.failed and can_become_with_alarm_root_su2.failed
+        role: bootstrap-alarm
+        become: yes
+        become_method: sudo
+
+

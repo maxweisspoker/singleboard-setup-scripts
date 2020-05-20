@@ -1,0 +1,11 @@
+.git
+.git/
+.git/*
+.vagrant
+.vagrant/
+.vagrant/*
+*.ignore
+ignore
+ignore/
+ignore/*
+

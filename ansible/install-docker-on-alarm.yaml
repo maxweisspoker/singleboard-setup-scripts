@@ -1,0 +1,7 @@
+---
+
+- hosts: alarm_hosts
+  roles:
+      - role: install-configure-docker-on-alarm
+        become: yes
+
