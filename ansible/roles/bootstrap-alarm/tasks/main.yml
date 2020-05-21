@@ -3,5 +3,4 @@
 
 - include: tasks.yml
   become: yes
-  include_vars: files/moduli_safe.yml
 

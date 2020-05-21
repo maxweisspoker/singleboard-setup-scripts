@@ -107,8 +107,49 @@
   notify: [ 'systemctl-daemon-reload', 'reboot' ]
   tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
 
+- name: add fstrim service override folder in etc
+  file:
+    state: directory
+    path: /etc/systemd/system/fstrim.service.d
+    owner: root
+    group: root
+    mode: 0755
+  notify: systemctl-daemon-reload
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: configure fstrim service override (1)
+  lineinfile:
+    path: /etc/systemd/system/fstrim.service.d/override.conf
+    create: yes
+    owner: root
+    group: root
+    mode: 0644
+    regexp: '^ExecStart='
+    line: 'ExecStart=/usr/bin/fstrim --all --verbose --quiet'
+  notify: [ 'systemctl-daemon-reload' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: configure fstrim service override (2)
+  lineinfile:
+    path: /etc/systemd/system/fstrim.service.d/override.conf
+    create: yes
+    owner: root
+    group: root
+    mode: 0644
+    regexp: '^\[Service\]'
+    line: '[Service]'
+    insertbefore: '^ExecStart='
+    firstmatch: yes
+  notify: [ 'systemctl-daemon-reload' ]
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
 - name: set fstrim timer
   template: src=fstrim.timer.j2 dest=/usr/lib/systemd/system/fstrim.timer mode=0644
+  notify: systemctl-daemon-reload
+  tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
+
+- name: set fstrim timer in etc for override
+  template: src=fstrim.timer.j2 dest=/etc/systemd/system/fstrim.timer mode=0644
   notify: systemctl-daemon-reload
   tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
 
@@ -348,6 +389,7 @@
     path: /etc/ssh/.ansible_hosts_generated
   register: ansible_hosts_generated
 
+- include_vars: file=files/moduli_safe.yml
 - name: copy over generated primes
   copy: content="{{ moduli_safe }}" dest=/etc/ssh/moduli mode=0644
   notify: restart-sshd
@@ -402,29 +444,30 @@
 # sshd borks and quits if you remove host keys it's using between tasks,
 # so we overwrite them with our generated ones in one task
 - name: move ssh host keys to correct location
-  shell: |
-    rm -f /etc/ssh/ssh_host_ed25519_key
-    rm -f /etc/ssh/ssh_host_ed25519_key.pub
-    mv /etc/ssh/ssh_host_ed25519_key2 /etc/ssh/ssh_host_ed25519_key
-    mv /etc/ssh/ssh_host_ed25519_key2.pub /etc/ssh/ssh_host_ed25519_key.pub
-    chown root:root /etc/ssh/ssh_host_ed25519_key
-    chown root:root /etc/ssh/ssh_host_ed25519_key.pub
-    chmod 600 /etc/ssh/ssh_host_ed25519_key
-    chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
-    rm -f /etc/ssh/ssh_host_rsa_key
-    rm -f /etc/ssh/ssh_host_rsa_key.pub; 
-    mv /etc/ssh/ssh_host_rsa_key2 /etc/ssh/ssh_host_rsa_key
-    mv /etc/ssh/ssh_host_rsa_key2.pub /etc/ssh/ssh_host_rsa_key.pub
-    chown root:root /etc/ssh/ssh_host_rsa_key
-    chown root:root /etc/ssh/ssh_host_rsa_key.pub
-    chmod 600 /etc/ssh/ssh_host_rsa_key
-    chmod 644 /etc/ssh/ssh_host_rsa_key.pub
-    touch /etc/ssh/.ansible_hosts_generated
-    chown root:root /etc/ssh/.ansible_hosts_generated
-    chmod 644 /etc/ssh/.ansible_hosts_generated
-    exit 0
+  shell:
+    warn: no
+    cmd: |
+      rm -f /etc/ssh/ssh_host_ed25519_key
+      rm -f /etc/ssh/ssh_host_ed25519_key.pub
+      mv /etc/ssh/ssh_host_ed25519_key2 /etc/ssh/ssh_host_ed25519_key
+      mv /etc/ssh/ssh_host_ed25519_key2.pub /etc/ssh/ssh_host_ed25519_key.pub
+      chown root:root /etc/ssh/ssh_host_ed25519_key
+      chown root:root /etc/ssh/ssh_host_ed25519_key.pub
+      chmod 600 /etc/ssh/ssh_host_ed25519_key
+      chmod 644 /etc/ssh/ssh_host_ed25519_key.pub
+      rm -f /etc/ssh/ssh_host_rsa_key
+      rm -f /etc/ssh/ssh_host_rsa_key.pub; 
+      mv /etc/ssh/ssh_host_rsa_key2 /etc/ssh/ssh_host_rsa_key
+      mv /etc/ssh/ssh_host_rsa_key2.pub /etc/ssh/ssh_host_rsa_key.pub
+      chown root:root /etc/ssh/ssh_host_rsa_key
+      chown root:root /etc/ssh/ssh_host_rsa_key.pub
+      chmod 600 /etc/ssh/ssh_host_rsa_key
+      chmod 644 /etc/ssh/ssh_host_rsa_key.pub
+      touch /etc/ssh/.ansible_hosts_generated
+      chown root:root /etc/ssh/.ansible_hosts_generated
+      chmod 644 /etc/ssh/.ansible_hosts_generated
+      exit 0
   when: not ansible_hosts_generated.stat.exists
-  warn: false
   notify: restart-sshd
   ignore_errors: "{{ ansible_check_mode }}"
   tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
