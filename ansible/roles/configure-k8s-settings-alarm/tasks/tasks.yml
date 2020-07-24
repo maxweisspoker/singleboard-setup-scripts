@@ -1,0 +1,238 @@
+---
+
+# Before we do much else, we need to enable IPv4 forwarding and
+# net.bridge.bridge-nf-call-iptables
+
+- name: enable ipv4 forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+    sysctl_file: /etc/sysctl.d/95-ipv4forward.conf
+  tags: [ 'configure-k8s', 'alarm', 'archlinux' ]
+
+- name: enable bridge-nf-call-iptables
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+    sysctl_file: /etc/sysctl.d/96-bridgenfiptables.conf
+  tags: [ 'configure-k8s', 'alarm', 'archlinux' ]
+
+- name: update pacman cache
+  pacman:
+    update_cache: yes
+    force: yes
+  tags: [ 'configure-k8s', 'alarm', 'archlinux' ]
+
+- name: update all system packages
+  pacman:
+    upgrade: yes
+    update_cache: no
+  tags: [ 'configure-k8s', 'alarm', 'archlinux' ]
+
+- name: install base-devel and coreutils
+  pacman:
+    name:
+      - autoconf
+      - automake
+      - binutils
+      - bison
+      - coreutils
+      - fakeroot
+      - file
+      - findutils
+      - flex
+      - gawk
+      - gcc
+      - gettext
+      - grep
+      - groff
+      - gzip
+      - libtool
+      - m4
+      - make
+      - pacman
+      - patch
+      - pkgconf
+      - sed
+      - sudo
+      - texinfo
+      - which
+    state: present
+  tags: [ 'configure-k8s', 'alarm', 'base-devel', 'archlinux' ]
+
+- name: install k8s required networking tools
+  pacman:
+    name:
+      - ebtables
+      - ethtool
+      - socat
+      - conntrack-tools
+      - ipset
+      - iptables
+    state: present
+  tags: [ 'configure-k8s', 'alarm', 'k8s-networking', 'archlinux' ]
+
+- name: install cni-plugins
+  pacman:
+    name:
+      - cni-plugins
+    state: present
+  tags: [ 'configure-k8s', 'alarm', 'k8s-networking', 'archlinux' ]
+
+# Arch stores CNI plugins in a non-standard location, so we symlink to that
+# But first, we make sure /opt/cni exists
+- name: create /opt/cni/ so that the symlink /opt/cni/bin will succeed
+  file:
+    path: /opt/cni
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  tags: [ 'configure-k8s', 'alarm', 'k8s-networking', 'archlinux' ]
+
+- name: symlink /opt/cni/bin to /usr/lib/cni
+  file:
+    src: /usr/lib/cni
+    dest: /opt/cni/bin
+    state: link
+    force: yes
+  tags: [ 'configure-k8s', 'alarm', 'k8s-networking', 'archlinux' ]
+
+# For some reason, the symlink sometimes also creates /opt/cni/bin/bin, so delete that
+- name: delete /usr/lib/cni/bin
+  file:
+    path: /usr/lib/cni/bin
+    state: absent
+  tags: [ 'configure-k8s', 'alarm', 'k8s-networking', 'archlinux' ]
+
+
+- name: install trizen if it's not installed
+  aur:
+    use: makepkg
+    state: present
+    name: [ "trizen" ]
+  become: yes
+  become_user: ansible
+  become_method: sudo
+
+# Determine if on pi0 or not, since K8s doesn't officially support arm6,
+# so we need to know whether to use official images or our custom ones
+
+- name: determine if arm6
+  shell: |
+    uname -a | grep armv6 2>&1 >/dev/null
+  register: is_this_arm6
+  failed_when: "is_this_arm6.rc != 0 and is_this_arm6.rc != 1"
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+
+# If not on arm6, install kubelet and kubeadm from the AUR
+
+# Ensure kubelet is installed first
+- name: install kubelet on non-arm6
+  aur:
+    state: present
+    name: [ "kubelet-bin" ]
+  become: yes
+  become_user: ansible
+  become_method: sudo
+  when: is_this_arm6.rc != 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s' ]
+
+- name: install kubeadm on non-arm6
+  aur:
+    state: present
+    name: [ "kubeadm-bin" ]
+  become: yes
+  become_user: ansible
+  become_method: sudo
+  when: is_this_arm6.rc != 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s' ]
+
+# If we are on arm6, copy over and install my pre-compiled packages
+
+- name: copy kubelet package to arm6
+  copy:
+    src: files/kubelet-bin-armv6h.tar.xz
+    dest: /kubelet-bin-armv6h.tar.xz
+  when: is_this_arm6.rc == 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+
+- name: copy kubeadm package to arm6
+  copy:
+    src: files/kubeadm-bin-armv6h.tar.xz
+    dest: /kubeadm-bin-armv6h.tar.xz
+  when: is_this_arm6.rc == 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+
+
+### File-based installs don't work with the pacman module, despite the claim that they do
+#- name: install kubelet on arm6
+#  pacman:
+#    name:
+#      - /kubelet-bin-armv6h.tar.xz
+#    state: present
+#  when: is_this_arm6.rc == 0
+#  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+#
+#- name: install kubeadm on arm6
+#  pacman:
+#    name:
+#      - /kubeadm-bin-armv6h.tar.xz
+#    state: present
+#  when: is_this_arm6.rc == 0
+#  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+- name: install kubelet on arm6
+  shell: |
+    pacman -U --noconfirm /kubelet-bin-armv6h.tar.xz
+  when: is_this_arm6.rc == 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+- name: install kubeadm on arm6
+  shell: |
+    pacman -U --noconfirm /kubeadm-bin-armv6h.tar.xz
+  when: is_this_arm6.rc == 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+
+
+# Delete package files
+- name: delete kubelet package file from arm6
+  file:
+    path: /kubelet-bin-armv6h.tar.xz
+    state: absent
+  when: is_this_arm6.rc == 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+
+- name: delete kubeadm package file from arm6
+  file:
+    path: /kubeadm-bin-armv6h.tar.xz
+    state: absent
+  when: is_this_arm6.rc == 0
+  tags: [ 'alarm', 'archlinux', 'configure-k8s', 'arm6' ]
+
+
+# Reload systemd service daemon and enable kubelet service
+- name: reload systemctl daemon
+  systemd:
+    daemon_reload: yes
+  tags: [ 'alarm', 'archlinux', 'configure-k8s' ]
+
+# After kubeadm install, kubelet will fail without kubeadm being run.
+# So, we enable it but don't start it (and don't stop it if it's already going)
+- name: enable kubelet but do not start it
+  service:
+    name: kubelet
+    enabled: yes
+  tags: [ 'alarm', 'archlinux', 'configure-k8s' ]
+
+
+# Now kubeadm should be ready to run on every node, master and worker.
+# Pi Zeroes will need to specify the custom docker registry, in order to download
+#     arm6-compatible images. kubeadm only lets you specify the domain part of the
+#     URL, so you have to use the same image names and tags that k8s.gcr.io uses.
+
+

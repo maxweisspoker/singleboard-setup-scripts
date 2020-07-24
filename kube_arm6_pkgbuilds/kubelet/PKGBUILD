@@ -1,0 +1,25 @@
+pkgname=kubelet-bin
+pkgdesc="Kubernetes.io kubelet binary"
+pkgver=1.18.3
+pkgrel=1
+arch=('armv6l' 'armv6h' 'armv6' 'arm6')
+url="http://kubernetes.io"
+license=('apache')
+depends=()
+conflicts=('kubernetes' 'kubernetes-bin')
+provides=('kubelet')
+source=(
+  "kubelet.service"
+  "kubelet"
+  # Kubelet pulled from my arm build container:
+  # https://github.com/maxweisspoker/k8s-multiarch-dockerfiles/tree/master/arm
+  # Compiled version available on Docker Hub:
+  # https://hub.docker.com/r/maxweiss/k8s-multiarch-builder
+)
+sha256sums=('3ea2a2c44642a584d9ae603fd4dccd401b06bf82338dba893c82a3ed41401a29' 'SKIP')
+
+package() {
+  install -Dm0644 "kubelet.service" "${pkgdir}/usr/lib/systemd/system/kubelet.service"
+  install -Dm0755 "kubelet" "${pkgdir}/usr/bin/kubelet"
+}
+

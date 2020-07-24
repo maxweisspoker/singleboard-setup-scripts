@@ -1,0 +1,12 @@
+{
+  "storage-driver": "overlay2",
+  "exec-opts": [
+    "native.cgroupdriver=systemd"
+  ],
+  "storage-opts": [
+    "overlay2.override_kernel_check=true"
+  ],
+  "live-restore": false,
+  "experimental": true,
+  "insecure-registries" : ["127.0.0.0/8", "localhost", "192.168.0.0/16"]
+}

@@ -1,0 +1,24 @@
+pkgname=kubeadm-bin
+pkgdesc="Kubernetes.io kubeadm binary"
+pkgver=1.18.3
+pkgrel=1
+arch=('armv6l' 'armv6h' 'armv6' 'arm6')
+url="http://kubernetes.io"
+license=('apache')
+depends=('kubelet-bin')
+conflicts=('kubernetes' 'kubernetes-bin')
+provides=('kubeadm')
+source=(
+  "10-kubeadm.conf"
+  "kubeadm"
+  # Kubeadm pulled from my arm build container:
+  # https://github.com/maxweisspoker/k8s-multiarch-dockerfiles/tree/master/arm
+  # Compiled version available on Docker Hub:
+  # https://hub.docker.com/r/maxweiss/k8s-multiarch-builder
+)
+sha256sums=('8af7f7910fd8710ce02af03170e109c6dc6d4d74eb2cc06f90530be4f0090b65' 'SKIP')
+
+package() {
+  install -D -m0644 "10-kubeadm.conf" "${pkgdir}/usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf"
+  install -D -m0755 "kubeadm" "${pkgdir}/usr/bin/kubeadm"
+}

@@ -204,6 +204,15 @@
   ignore_errors: "{{ ansible_check_mode }}"
   tags: [ 'alarm', 'archlinux', 'docker' ]
 
+- name: add docker daemon.json
+  copy:
+    src: files/docker_daemon.json
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: '0644'
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
 # Reload config before enabling docker service
 
 - name: systemctl-daemon-reload (2)

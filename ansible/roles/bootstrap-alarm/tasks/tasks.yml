@@ -94,7 +94,7 @@
 
 - name: set hostname based on last ip4 octet
   hostname:
-    name: "pialarm{{ ansible_default_ipv4.address.split('.')[3] }}"
+    name: "pialarm{{ ansible_default_ipv4.address.split('.')[3] }}.maxweiss.io"
     use: systemd
   notify: reboot
   tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]

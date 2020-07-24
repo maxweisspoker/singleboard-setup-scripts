@@ -1,0 +1,7 @@
+---
+
+  - hosts: alarm_hosts
+    roles:
+      - role: configure-k8s-settings-alarm
+        become: yes
+
