@@ -264,3 +264,22 @@
     password: "{{ my_private_docker_repo_login_password }}"
   tags: [ 'alarm', 'archlinux', 'docker' ]
 
+# Make sure root user is also logged in, so kubelet can work
+
+- name: log into docker hub as root
+  become: yes
+  become_user: root
+  docker_login:
+    username: "{{ my_dockerhub_username }}"
+    password: "{{ my_dockerhub_password }}"
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
+- name: log into private docker repo as root
+  become: yes
+  become_user: root
+  docker_login:
+    registry: "{{ my_private_docker_repo_url }}"
+    username: "{{ my_private_docker_repo_login_username }}"
+    password: "{{ my_private_docker_repo_login_password }}"
+  tags: [ 'alarm', 'archlinux', 'docker' ]
+
