@@ -270,6 +270,7 @@
       - git
       - openssh
       - fakeroot
+      - rsync
     state: present
   tags: [ 'bootstrap', 'alarm', 'bootstrap-alarm', 'archlinux' ]
 
